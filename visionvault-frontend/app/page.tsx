@@ -1,8 +1,10 @@
 "use client";
-
+import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import Image from "next/image";
-import { PlusIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
-import { useState, useRef, useEffect } from "react";
+import Gallery from "./components/Gallery";
+import Login from "./components/Login";
+import Upload from "./components/Upload";
+
 
 const images = [
   { id: 1, src: "https://picsum.photos/500/700?random=1" },
@@ -46,88 +48,31 @@ const images = [
   { id: 39, src: "https://picsum.photos/500/720?random=39" },
   { id: 40, src: "https://picsum.photos/500/720?random=40" },
   { id: 41, src: "https://picsum.photos/500/720?random=41" },
-
-
 ];
 
+
 export default function Home() {
-  const [showAccountMenu, setShowAccountMenu] = useState(false);
-  const menuRef = useRef();
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setShowAccountMenu(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* ===== Navbar ===== */}
       <nav className="flex items-center justify-between px-4 md:px-8 py-4 bg-white shadow-sm sticky top-0 z-50">
-        {/* Logo */}
         <div className="flex items-center gap-2">
-          <Image src="/logo.png" alt="VisionVault Logo" width={40} height={40} />
+          <Image src="/logo.png" alt="VisionVault" width={40} height={40} />
           <h1 className="text-xl md:text-2xl font-bold text-gray-800">VisionVault</h1>
         </div>
 
-        {/* Search Bar */}
         <div className="flex-1 mx-4 max-w-2xl hidden sm:flex items-center bg-gray-100 rounded-full px-4 py-2">
           <MagnifyingGlassIcon className="h-5 w-5 text-gray-500" />
-          <input
-            type="text"
-            placeholder="Search..."
-            className="bg-transparent outline-none px-3 w-full"
-          />
+          <input type="text" placeholder="Search..." className="bg-transparent outline-none px-3 w-full" />
         </div>
 
-        {/* Right Icons */}
-        <div className="flex items-center gap-4 relative">
-          {/* Upload Button */}
-          <button className="flex items-center gap-2 bg-black text-white px-4 py-2 rounded-full hover:bg-gray-800 transition">
-            <PlusIcon className="h-5 w-5" />
-            <span className="hidden md:inline">Upload</span>
-          </button>
-
-          {/* Account Image */}
-          <div className="relative" ref={menuRef}>
-            <Image
-              src="/no-account.png"
-              alt="Account"
-              width={40}
-              height={40}
-              className="rounded-full cursor-pointer"
-              onClick={() => setShowAccountMenu((prev) => !prev)}
-            />
-
-            {/* Dropdown */}
-            {showAccountMenu && (
-              <div className="absolute right-0 mt-2 w-32 bg-white shadow-lg rounded-lg border border-gray-200 z-50">
-                <button className="w-full text-left px-4 py-2 hover:bg-gray-100 rounded-t-lg">
-                  Sign Up
-                </button>
-                <button className="w-full text-left px-4 py-2 hover:bg-gray-100 rounded-b-lg">
-                  Login
-                </button>
-              </div>
-            )}
-          </div>
+        <div className="flex items-center gap-4">
+          <Upload />
+          <Login />
         </div>
       </nav>
 
-      {/* ===== Masonry Grid ===== */}
       <main className="px-4 md:px-8 py-6">
-        <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 gap-4 space-y-4">
-          {images.map((img) => (
-            <div key={img.id} className="break-inside-avoid rounded-xl overflow-hidden hover:opacity-90 transition">
-              <img src={img.src} alt="Random" className="w-full rounded-xl" />
-            </div>
-          ))}
-        </div>
+        <Gallery images={images} />
       </main>
     </div>
   );
