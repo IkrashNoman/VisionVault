@@ -34,3 +34,58 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+# =========================
+# Virtual Environment
+# =========================
+venv/
+env/
+visionvault-backend/venv/
+visionvault-py311/
+# =========================
+# Model Weights
+# =========================
+*.pth
+*.pt
+*.bin
+*.ckpt
+
+# =========================
+# HuggingFace Cache
+# =========================
+.cache/
+.huggingface/
+
+# =========================
+# OS Files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# IDE
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# Large files
+# =========================
+*.zip
+*.tar
+*.gz
+*.7z
+
+# =========================
+# Environment files
+# =========================
+.env

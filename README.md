@@ -44,3 +44,17 @@ Models:
     LLaVA
     GPT-4V
 
+
+# Implementation
+## Detect & Segment Everything
+    Segment Anything Model (SAM)
+
+## Classify Each Segment
+    CLIP
+
+## Generate Caption
+    BLIP-2
+    ViT-GPT2
+
+## Combination of All of these
+    LLaVA
