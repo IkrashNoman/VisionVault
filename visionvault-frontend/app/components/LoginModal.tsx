@@ -35,7 +35,7 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup, onLoginS
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               placeholder="Enter your username or gmail" 
-              className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-black outline-none transition"
+              className="w-full px-4 py-2 border border-gray-200 rounded-lg text-black placeholder-gray-400 focus:ring-2 focus:ring-black outline-none transition"
             />
           </div>
 
@@ -44,7 +44,7 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup, onLoginS
             <input 
               type="password" 
               placeholder="Enter your password" 
-              className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-black outline-none transition"
+              className="w-full px-4 py-2 border border-gray-200 rounded-lg text-black placeholder-gray-400 focus:ring-2 focus:ring-black outline-none transition"
             />
           </div>
 

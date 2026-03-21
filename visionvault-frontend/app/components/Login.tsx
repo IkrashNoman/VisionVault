@@ -45,11 +45,11 @@ export default function Login() {
             <>
               <button 
                 onClick={() => { setIsSignupOpen(true); setShowAccountMenu(false); }}
-                className="w-full text-left px-4 py-2 hover:bg-gray-50 font-medium"
+                className="w-full text-left px-4 py-2 text-black hover:bg-gray-50 font-medium"
               >Sign Up</button>
               <button 
                 onClick={() => { setIsLoginOpen(true); setShowAccountMenu(false); }}
-                className="w-full text-left px-4 py-2 hover:bg-gray-50 font-medium"
+                className="w-full text-left px-4 py-2 text-black hover:bg-gray-50 font-medium"
               >Login</button>
             </>
           ) : (

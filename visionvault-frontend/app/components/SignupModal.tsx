@@ -32,12 +32,12 @@ export default function SignupModal({ isOpen, onClose, onSignupSuccess, onSwitch
             <div className="mt-6 space-y-4">
               <div>
                 <label className="text-sm font-medium text-gray-700">Choose a cool username</label>
-                <input type="text" placeholder="Enter your username" className="w-full px-4 py-2 border rounded-lg outline-none focus:border-black transition" />
+                <input type="text" placeholder="Enter your username" className="w-full px-4 py-2 border rounded-lg text-black placeholder-gray-400 outline-none focus:border-black transition" />
                 <p className="text-[10px] text-gray-400 mt-1">input field contain only alphabets, numbers, and underscores</p>
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-700">Enter your email</label>
-                <input type="email" placeholder="Enter your email" className="w-full px-4 py-2 border rounded-lg outline-none focus:border-black transition" />
+                <input type="email" placeholder="Enter your email" className="w-full px-4 py-2 border rounded-lg text-black placeholder-gray-400 outline-none focus:border-black transition" />
               </div>
               <div className="relative">
                 <label className="text-sm font-medium text-gray-700">Choose your password</label>
@@ -46,7 +46,7 @@ export default function SignupModal({ isOpen, onClose, onSignupSuccess, onSwitch
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter Password" 
-                  className="w-full px-4 py-2 border rounded-lg outline-none focus:border-black transition" 
+                  className="w-full px-4 py-2 border rounded-lg text-black placeholder-gray-400 outline-none focus:border-black transition" 
                 />
                 <button onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-9 text-gray-400 hover:text-gray-600">
                   {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
@@ -103,7 +103,7 @@ export default function SignupModal({ isOpen, onClose, onSignupSuccess, onSwitch
               <p className="text-sm text-gray-500 mb-4">Enter the OTP we just sent you</p>
               <div className="flex justify-center gap-3">
                 {[1,2,3,4].map((i) => (
-                  <input key={i} type="text" maxLength={1} className="w-12 h-14 border-2 rounded-xl text-center font-bold text-2xl focus:border-black outline-none transition-colors" />
+                  <input key={i} type="text" maxLength={1} className="w-12 h-14 border-2 rounded-xl text-center font-bold text-2xl text-black placeholder-gray-400 focus:border-black outline-none transition-colors" />
                 ))}
               </div>
             </div>

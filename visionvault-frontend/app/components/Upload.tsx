@@ -33,14 +33,14 @@ export default function Upload() {
             className="flex items-center gap-3 w-full px-4 py-3 hover:bg-gray-50 border-b border-gray-50"
           >
             <PhotoIcon className="h-5 w-5 text-gray-600" />
-            <span>Upload Gallery</span>
+            <span className="text-black">Upload Gallery</span>
           </button>
           <button 
             onClick={() => handleCapture('camera')}
             className="flex items-center gap-3 w-full px-4 py-3 hover:bg-gray-50"
           >
             <CameraIcon className="h-5 w-5 text-gray-600" />
-            <span>Live Capture</span>
+            <span className="text-black">Live Capture</span>
           </button>
         </div>
       )}
