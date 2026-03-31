@@ -5,8 +5,8 @@ class ImageStoreSerializer(serializers.ModelSerializer):
     class Meta:
         model = ImageStore
         fields = ['public_id', 'image_file', 'source', 'generation_prompt', 'embedding_vector']
-        read_only_fields = ['public_id', 'width', 'height']
-        
+        read_only_fields = ['public_id', 'width', 'height', 'embedding_vector', 'tags']
+
 class ImageListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for the 'View All' gallery."""
     class Meta:
