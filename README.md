@@ -58,3 +58,8 @@ Models:
 
 ## Combination of All of these
     LLaVA
+
+## Tag Generation: YOlov8
+## For Caption: Blip 2
+## Image search: CLIP
+## Image generation: Stable diffusion
