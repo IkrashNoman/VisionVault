@@ -4,7 +4,7 @@ import os
 # --- CONFIGURATION ---
 API_URL = "http://127.0.0.1:8000/api/upload/"
 # Change this to the actual path of an image on your computer
-IMAGE_PATH = "D:\\image.png"
+IMAGE_PATH = "D:/bike, beachh, dog.png"
 
 def test_backend_upload():
     if not os.path.exists(IMAGE_PATH):

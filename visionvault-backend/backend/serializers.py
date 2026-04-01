@@ -15,19 +15,20 @@ class ImageListSerializer(serializers.ModelSerializer):
         fields = ['public_id', 'image_file', 'created_at'] 
 
 class ImageDetailSerializer(serializers.ModelSerializer):
-    """Heavy serializer for the specific image view."""
+    """Heavy serializer for the specific image view including top 5 captions."""
     tags = serializers.SerializerMethodField()
-    caption = serializers.SerializerMethodField()
+    captions = serializers.SerializerMethodField() # Changed from single 'caption'
 
     class Meta:
         model = ImageStore
-        fields = ['public_id', 'image_file', 'tags', 'caption', 'created_at']
+        fields = ['public_id', 'image_file', 'tags', 'captions', 'created_at']
 
     def get_tags(self, obj):
-        # Extracts a flat list of tag strings from the M2M relationship
         return [tag.name for tag in obj.tags.all()]
 
-    def get_caption(self, obj):
-        # Retrieves the primary caption text
-        caption_obj = obj.captions.filter(is_primary=True).first()
-        return caption_obj.text if caption_obj else None
+    def get_captions(self, obj):
+        # Returns the top 5 captions based on the ordering defined in the model
+        return [
+            {"text": c.text, "score": c.confidence_score, "is_primary": c.is_primary} 
+            for c in obj.captions.all()[:5]
+        ]

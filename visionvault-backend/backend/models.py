@@ -46,11 +46,11 @@ class ImageTag(models.Model):
     confidence_score = models.FloatField() # Metric for evaluation [cite: 12]
 
 class Caption(models.Model):
-    """
-    Stores 'Contextual Caption Generation'[cite: 8, 18, 26].
-    """
     image = models.ForeignKey(ImageStore, on_delete=models.CASCADE, related_name='captions')
     text = models.TextField()
-    confidence_score = models.FloatField(null=True, blank=True)
-    is_primary = models.BooleanField(default=True)
+    confidence_score = models.FloatField(null=True, blank=True) # CLIP similarity score
+    is_primary = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-confidence_score']

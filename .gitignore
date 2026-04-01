@@ -89,3 +89,6 @@ Thumbs.db
 # Environment files
 # =========================
 .env
+
+visionvault-backend/yolov8n.pt
+visionvault-backend/backend/yolov8n.pt
