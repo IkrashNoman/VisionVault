@@ -1,3 +1,6 @@
+django
+djangorestframework
+django-cors-headers
 torch
 torchvision
 torchaudio
@@ -7,5 +10,11 @@ matplotlib
 transformers
 timm
 accelerate
+ultralytics
+nltk
+requests
+numpy
+pandas
+
 git+https://github.com/facebookresearch/segment-anything.git
 git+https://github.com/openai/CLIP.git
