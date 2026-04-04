@@ -6,38 +6,36 @@ import NavBar from "./components/Navbar";
 export default function Home() {
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // Use the .env variable. Ensure it is ONLY "http://127.0.0.1:8000/api" in your .env file.
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000/api";
+  const BACKEND_URL = "http://127.0.0.1:8000";
+
+  const formatImages = (data: any[]) => {
+    return data.map((img: any) => {
+      // Logic to handle both local 'image_file' and search 'src' fields
+      const rawSrc = img.src || img.image_file;
+      
+      if (!rawSrc) return null; // Defensive check
+
+      return {
+        id: img.id || img.public_id,
+        src: rawSrc.startsWith('http') ? rawSrc : `${BACKEND_URL}${rawSrc}`,
+        tags: img.tags || [],
+        captions: img.captions || [],
+        source: img.source || "DATABASE"
+      };
+    }).filter(Boolean); // Remove any nulls
+  };
 
   useEffect(() => {
-  const fetchImages = async () => {
-    try {
-      // Use a template literal but be careful with slashes
-      // If API_BASE is http://.../api, this becomes http://.../api/gallery/
-      const response = await fetch(`${API_BASE}/gallery/`);
-      
-      if (!response.ok) {
-          // If this still hits 404, look at the URL printed here:
-          console.error("404 at URL:", `${API_BASE}/gallery/`);
-          return;
-      }
-
-        const data = await response.json();
-        
-        const formattedData = data.map((img: any) => ({
-          id: img.public_id,
-          // Extract the host from the API_BASE to keep it dynamic and unexposed
-          src: img.image_file.startsWith('http') 
-               ? img.image_file 
-               : `${new URL(API_BASE).origin}${img.image_file}`,
-          tags: [], 
-          captions: [] 
-        }));
-
-        setImages(formattedData);
+    const fetchImages = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/gallery/`);
+        if (response.ok) {
+          const data = await response.json();
+          setImages(formatImages(data));
+        }
       } catch (error) {
-        console.error("Connection failed. Is the Django server running?", error);
+        console.error("Initial load failed:", error);
       } finally {
         setLoading(false);
       }
@@ -47,10 +45,10 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <NavBar />
+      <NavBar onSearchResults={(results) => setImages(formatImages(results))} />
       <main className="px-4 md:px-8 py-6">
         {loading ? (
-          <div className="flex justify-center py-20 text-gray-400">Loading VisionVault...</div>
+          <div className="flex justify-center py-20 text-gray-400 font-bold">VisionVault is opening...</div>
         ) : (
           <Gallery images={images} />
         )}
