@@ -120,6 +120,21 @@ class TagGenerator:
                 logger.error(f"GPT-2 tag generation failed: {e}")
 
         return final_results
+    
+    def get_image_embedding(self, image_path):
+        """
+        Extracts a vector representing the image using the liteCLIP pipeline.
+        """
+        if not self.clip_pipeline:
+            logger.error("CLIP pipeline not initialized.")
+            return None
+
+        try:
+            # Call the new method we just added to ZeroShotPipeline
+            return self.clip_pipeline.get_image_features(image_path)
+        except Exception as e:
+            logger.error(f"Failed to generate embedding for {image_path}: {e}")
+            return None
 
 # Global instance used by views.py
 generator = TagGenerator()  

@@ -1,79 +1,56 @@
 "use client";
 import { useState } from "react";
+import ImageCard from "./ImageCard";
+import ImageDetailModal from "./ImageDetailModal";
 
-interface ImageItem {
-  id: number;
-  src: string;
-}
+export default function Gallery({ images }: { images: any[] }) {
+  const [selectedImage, setSelectedImage] = useState<any | null>(null);
+  const [isModalLoading, setIsModalLoading] = useState(false);
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000/api";
 
-interface GalleryProps {
-  images: ImageItem[];
-}
-
-export default function Gallery({ images }: GalleryProps) {
-  return (
-    <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 gap-4 space-y-4">
-      {images.map((img) => (
-        <ImageCard key={img.id} img={img} />
-      ))}
-    </div>
-  );
-}
-
-function ImageCard({ img }: { img: ImageItem }) {
-  const [liked, setLiked] = useState(false);
-  const [disliked, setDisliked] = useState(false);
-
-  const handleLike = () => {
-    setLiked(!liked);
-    if (disliked) setDisliked(false); // Remove dislike if liking
-  };
-
-  const handleDislike = () => {
-    setDisliked(!disliked);
-    if (liked) setLiked(false); // Remove like if disliking
+  const handleImageClick = async (img: any) => {
+    setIsModalLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/gallery/${img.id}/`);
+      const details = await response.json();
+      
+      setSelectedImage({
+        src: details.image_file.startsWith('http') 
+             ? details.image_file 
+             : `${new URL(API_BASE).origin}${details.image_file}`,
+        tags: details.tags,
+        captions: details.captions
+      });
+    } catch (error) {
+      console.error("Detail fetch failed:", error);
+    } finally {
+      setIsModalLoading(false);
+    }
   };
 
   return (
-    <div className="relative group break-inside-avoid rounded-xl overflow-hidden cursor-pointer">
-      {/* Image with blur on hover */}
-      <img
-        src={img.src}
-        alt="Gallery item"
-        className="w-full rounded-xl transition-all duration-300 group-hover:blur-sm group-hover:scale-105"
+    <>
+      <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 gap-4 space-y-4">
+        {images.map((img) => (
+          <div key={img.id} onClick={() => handleImageClick(img)}>
+            <ImageCard img={img} />
+          </div>
+        ))}
+      </div>
+
+      <ImageDetailModal 
+        isOpen={!!selectedImage} 
+        onClose={() => setSelectedImage(null)} 
+        image={selectedImage} 
       />
 
-      {/* Icons Overlay */}
-      <div className="absolute inset-0 flex items-center justify-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-black/30">
-        {/* Like Button */}
-        <button 
-          onClick={handleLike}
-          className="p-2 bg-white/90 rounded-full hover:scale-110 transition active:scale-95"
-        >
-          <img 
-            src={liked ? "/liked.png" : "/like.png"} 
-            alt="Like" 
-            className="w-6 h-6 object-contain" 
-          />
-        </button>
-
-        {/* Dislike Button */}
-        <button 
-          onClick={handleDislike}
-          className="p-2 bg-white/90 rounded-full hover:scale-110 transition active:scale-95"
-        >
-          <img 
-            src={disliked ? "/disliked.png" : "/dislike.png"} 
-            alt="Dislike" 
-            className="w-6 h-6 object-contain" 
-          />
-        </button>
-
-        {/* Share Button */}
-        <button className="p-2 bg-white/90 rounded-full hover:scale-110 transition">
-          <img src="/share.png" alt="Share" className="w-6 h-6 object-contain" />
-        </button>
-      </div>
-    </div>
+      {isModalLoading && (
+        <div className="fixed inset-0 z-[120] bg-black/40 flex items-center justify-center cursor-wait backdrop-blur-sm">
+            <div className="bg-white px-6 py-4 rounded-2xl shadow-2xl font-bold animate-pulse text-black">
+              VisionVault is analyzing...
+            </div>
+        </div>
+      )}
+    </>
   );
 }

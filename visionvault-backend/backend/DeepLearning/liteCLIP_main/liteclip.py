@@ -65,6 +65,28 @@ class ZeroShotPipeline:
 
         return text_inputs
 
+    @torch.no_grad()
+    def get_image_features(self, image_path):
+        """
+        Extracts the final projection vector for an image.
+        """
+        # 1. Preprocess the image to a tensor
+        img = self._prepare_image(image_path).to(next(self.model.parameters()).device)
+        
+        # 2. Pass through the Image Encoder (Backbone)
+        # In your model.py, this is self.image_encoder
+        image_features = self.model.image_encoder(img)
+        
+        # 3. Pass through the Projection Head
+        # This is required to align the image math with the text math
+        projected_features = self.model.img_projection(image_features)
+        
+        # 4. Normalize the vector
+        # This turns it into a unit vector so Cosine Similarity works correctly
+        projected_features = projected_features / projected_features.norm(dim=-1, keepdim=True)
+        
+        # 5. Convert to list for Django JSON storage
+        return projected_features.cpu().numpy().flatten().tolist()
     
     @torch.no_grad()
     def predict(self,image:str, labels: list[str],top_k:int=5):

@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 class CaptionGenerator:
     def __init__(self):
+        logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
         self.device = "cpu"
         self.blip_model_id = "Salesforce/blip-image-captioning-base"
         
