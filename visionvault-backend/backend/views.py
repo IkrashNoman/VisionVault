@@ -11,17 +11,13 @@ from .caption_generation import captioner
 from .search_functionality import searcher
 import logging
 import uuid
+import requests    
 
 logger = logging.getLogger(__name__)
 
 class ImageListView(ListAPIView):
     queryset = ImageStore.objects.all().order_by('-created_at')
     serializer_class = ImageListSerializer
-
-class ImageDetailView(RetrieveAPIView):
-    queryset = ImageStore.objects.all()
-    serializer_class = ImageDetailSerializer
-    lookup_field = 'public_id'
 
 class ImageUploadView(APIView):
     parser_classes = (MultiPartParser, FormParser)
@@ -86,102 +82,191 @@ class ImageUploadView(APIView):
 class ImageSearchView(APIView):
     def get(self, request):
         query = request.query_params.get('q', '')
+        page = int(request.query_params.get('page', 1))
         mode = request.query_params.get('mode', 'search')
 
         if mode == 'suggest':
             return Response(searcher.get_suggestions(query))
 
-        if not query:
-            return Response([])
-
-        # 1. Local Search
-        vector = searcher.get_text_embedding(query)
-        db_matches = searcher.search_database(vector)
-        
         results = []
-        for img, score in db_matches:
-            results.append({
-                "id": str(img.public_id),
-                "src": img.image_file.url,
-                "source": "DATABASE",
-                "tags": [t.name for t in img.tags.all()],
-                "captions": [{"text": c.text} for c in img.captions.all()[:1]]
-            })
-
-        # 2. Web Fallback - Force search if under 10 results
-        if len(results) < 10:
-            web_data = searcher.search_web(query)
-            for photo in web_data:
-                results.append({
-                    "id": str(img.public_id),
-                    "src": img.image_file.url, # DRF .url includes the /media/ prefix
-                    "source": "DATABASE",
-                    "tags": [t.name for t in img.tags.all()],
-                    "captions": [{"text": c.text} for c in img.captions.all()[:1]]
-                })
         
-        return Response(results)
+        # 1. DATABASE RESULTS: Only fetched on Page 1 to prevent repeats during scroll
+        if page == 1:
+            if query:
+                vector = searcher.get_text_embedding(query)
+                db_matches = searcher.search_database(vector)
+                for img, score in db_matches:
+                    results.append({
+                        "id": str(img.public_id),
+                        "src": img.image_file.url,
+                        "source": "DATABASE",
+                        "tags": [t.name for t in img.tags.all()],
+                        "captions": [{"text": c.text} for c in img.captions.all()[:1]]
+                    })
+            else:
+                # Load standard gallery if no query exists
+                images = ImageStore.objects.all().order_by('-created_at')[:20]
+                for img in images:
+                    results.append({
+                        "id": str(img.public_id),
+                        "src": img.image_file.url,
+                        "source": "DATABASE",
+                        "tags": [t.name for t in img.tags.all()],
+                        "captions": [{"text": c.text} for c in img.captions.all()[:1]]
+                    })
+
+        # 2. WEB RESULTS: Always fetch from Pexels for every page to enable infinite scroll
+        # Fallback to 'photography' if no query is provided
+        web_query = query if query else "photography"
+        web_data = searcher.search_web(web_query, page=page, limit=20)
+        
+        for photo in web_data:
+            # Prefix 'web_' ensures ID uniqueness against local UUIDs
+            results.append({
+                "id": f"web_{photo['id']}", 
+                "src": photo['src']['large2x'],
+                "source": "INTERNET",
+                "tags": ["Pexels"],
+                "captions": [{"text": photo.get('alt', 'Web Result')}]
+            })
+        
+        return Response(results)  
+      
+class ImageDetailView(RetrieveAPIView):
+    queryset = ImageStore.objects.all()
+    serializer_class = ImageDetailSerializer
+    lookup_field = 'public_id'
+
+    def get(self, request, *args, **kwargs):
+        # FIX: Check if ID is from the web before Django tries to validate it as a UUID
+        lookup_value = self.kwargs.get(self.lookup_url_kwarg or self.lookup_field)
+
+        if str(lookup_value).startswith('web_'):
+            return Response({
+                "image_file": request.query_params.get('src'),
+                "tags": ["Internet", "Pexels"],
+                "captions": [{"text": "External Web Image", "score": 1.0}]
+            })
+        
+        return super().get(request, *args, **kwargs)
 
 class SilentUploadView(APIView):
     def post(self, request):
         image_url = request.data.get('image_url')
-        if not image_url:
-            return Response({"error": "No URL provided"}, status=400)
+        raw_external_id = request.data.get('external_id')
+        
+        if not image_url or not raw_external_id:
+            return Response(
+                {"error": "Missing fields: 'image_url' and 'external_id' are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Prevent duplicate downloads
+        if ImageStore.objects.filter(external_id=raw_external_id).exists():
+            return Response(
+                {"message": "Already in vault", "public_id": None},
+                status=status.HTTP_200_OK
+            )
 
         try:
-            # 1. Download the image from the web
+            # 1. Download image from the web
             response = requests.get(image_url, timeout=10)
-            if response.status_code != 200:
-                return Response({"error": "Failed to fetch image from web"}, status=400)
+            response.raise_for_status()
 
-            # 2. Create the ImageStore instance
-            file_name = f"web_{uuid.uuid4().hex[:8]}.jpg"
+            # 2. Create DB entry (image_file will be saved after download)
             image_instance = ImageStore.objects.create(
-                source='AI', # Marking as AI/Web sourced
-                generation_prompt=request.data.get('query', 'Web Search')
+                source='WEB',
+                external_id=raw_external_id
             )
-            
-            # Save the downloaded binary content to the ImageField
-            image_instance.image_file.save(file_name, ContentFile(response.content), save=True)
+
+            # 3. Save the downloaded content as the image file
+            image_instance.image_file.save(
+                f"web_{raw_external_id}.jpg",
+                ContentFile(response.content),
+                save=True
+            )
+
+            # 4. --- AI PIPELINE (same as ImageUploadView) ---
             image_path = image_instance.image_file.path
+            ai_success = True
+            ai_error = None
 
-            # 3. TRIGGER AI PIPELINE (Same logic as your Manual Upload)
-            # Generate Embedding Vector
-            vector = generator.get_image_embedding(image_path)
-            if vector:
-                image_instance.embedding_vector = vector
-                image_instance.save(update_fields=['embedding_vector'])
+            try:
+                # Generate embedding vector
+                vector = generator.get_image_embedding(image_path)
+                if vector:
+                    image_instance.embedding_vector = vector
+                    image_instance.save(update_fields=['embedding_vector'])
 
-            # Generate Tags
-            predicted_tags = generator.get_image_tags(image_path)
-            yolo_list = [name for name, score in predicted_tags.items() if score > 0.8]
-            clip_list = [name for name, score in predicted_tags.items() if score <= 0.8]
-            
-            for tag_name, score in predicted_tags.items():
-                tag_obj, _ = Tag.objects.get_or_create(name=tag_name)
-                ImageTag.objects.create(image=image_instance, tag=tag_obj, confidence_score=score)
+                # Generate tags
+                predicted_tags = generator.get_image_tags(image_path)
+                yolo_list = []
+                clip_list = []
 
-            # Generate Captions
-            all_captions = captioner.generate_all_captions(image_path, yolo_list, clip_list)
-            
-            # Rank and Store Best 5
-            if generator.clip_pipeline and all_captions:
-                rankings = generator.clip_pipeline.predict(image_path, all_captions, top_k=len(all_captions))
+                for tag_name, score in predicted_tags.items():
+                    tag_obj, _ = Tag.objects.get_or_create(name=tag_name)
+                    ImageTag.objects.create(
+                        image=image_instance,
+                        tag=tag_obj,
+                        confidence_score=score
+                    )
+                    if score > 0.8:
+                        yolo_list.append(tag_name)
+                    else:
+                        clip_list.append(tag_name)
+
+                # Generate captions
+                all_captions = captioner.generate_all_captions(image_path, yolo_list, clip_list)
+
+                # Ensemble ranking (liteCLIP)
+                if generator.clip_pipeline is not None and all_captions:
+                    rankings = generator.clip_pipeline.predict(image_path, all_captions, top_k=len(all_captions))
+                else:
+                    rankings = [(text, 0.5) for text in all_captions]
+
+                # Store top 5 captions
+                for i, (text, score) in enumerate(rankings[:5]):
+                    Caption.objects.create(
+                        image=image_instance,
+                        text=text,
+                        confidence_score=score,
+                        is_primary=(i == 0)
+                    )
+
+            except Exception as e:
+                logger.exception("AI pipeline failed for silent upload")
+                ai_success = False
+                ai_error = str(e)
+
+            # 5. Return response
+            if ai_success:
+                return Response(
+                    {"message": "Saved with AI insights", "public_id": image_instance.public_id},
+                    status=status.HTTP_201_CREATED
+                )
             else:
-                rankings = [(text, 0.5) for text in all_captions]
-
-            for i, (text, score) in enumerate(rankings[:5]):
-                Caption.objects.create(
-                    image=image_instance,
-                    text=text,
-                    confidence_score=score,
-                    is_primary=(i == 0)
+                return Response(
+                    {
+                        "message": "Image saved but AI pipeline failed",
+                        "error": ai_error,
+                        "public_id": image_instance.public_id
+                    },
+                    status=status.HTTP_207_MULTI_STATUS
                 )
 
-            return Response({
-                "message": "Silently indexed", 
-                "public_id": image_instance.public_id
-            }, status=201)
-
+        except requests.exceptions.Timeout:
+            return Response(
+                {"error": "Request timed out while fetching the image"},
+                status=status.HTTP_504_GATEWAY_TIMEOUT
+            )
+        except requests.exceptions.RequestException as e:
+            return Response(
+                {"error": f"Failed to fetch image: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as e:
-            return Response({"error": str(e)}, status=500)
+            logger.exception("Unexpected error in SilentUploadView")
+            return Response(
+                {"error": "Internal server error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )    

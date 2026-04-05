@@ -4,12 +4,16 @@ from PIL import Image
 import uuid
 
 class ImageStore(models.Model):
-    SOURCE_CHOICES = [('HUMAN', 'Uploaded'), ('AI', 'Generated')]
+    SOURCE_CHOICES = [('HUMAN', 'Uploaded'), ('AI', 'Generated'), ('WEB', 'Internet')] # Added 'WEB'
     
-    # The new public identifier
     public_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     
-    image_file = models.ImageField(upload_to='gallery/', width_field='width', height_field='height')
+    # NEW: Store the ID from Pexels/Web to prevent duplicate silent uploads
+    external_id = models.CharField(max_length=100, null=True, blank=True, unique=True)
+    
+    # Allow image_file to be null temporarily during web-fetching logic if needed
+    image_file = models.ImageField(upload_to='gallery/', width_field='width', height_field='height', null=True, blank=True)
+    
     source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default='HUMAN')
     generation_prompt = models.TextField(blank=True, null=True)
     embedding_vector = models.JSONField(null=True, blank=True)
@@ -26,7 +30,7 @@ class ImageStore(models.Model):
         return None
 
     def __str__(self):
-        return f"Image {self.public_id} ({self.source})"
+        return f"Image {self.public_id} ({self.source}) - External: {self.external_id}"
     
 class Tag(models.Model):
     """
