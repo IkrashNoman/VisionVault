@@ -4,7 +4,8 @@ from .views import (
     ImageListView, 
     ImageDetailView,
     ImageSearchView,
-    SilentUploadView   
+    SilentUploadView,
+    GenerateAIView
 )
 
 urlpatterns = [
@@ -15,4 +16,5 @@ urlpatterns = [
     
     path('search/', ImageSearchView.as_view(), name='image-search'),
     path('silent-upload/', SilentUploadView.as_view(), name='silent-upload'),
+    path('generate/', GenerateAIView.as_view(), name='image-generate'),
 ]

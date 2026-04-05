@@ -1,9 +1,9 @@
 django
 djangorestframework
 django-cors-headers
-torch
-torchvision
-torchaudio
+# torch
+# torchvision
+# torchaudio
 opencv-python
 pillow
 matplotlib
@@ -15,6 +15,12 @@ nltk
 requests
 numpy
 pandas
+dotenv
+# xformers
+# sentencepiece
+transformers>=4.40.0
+accelerate>=0.28.0
 
 git+https://github.com/facebookresearch/segment-anything.git
 git+https://github.com/openai/CLIP.git
+git+https://github.com/huggingface/diffusers.git

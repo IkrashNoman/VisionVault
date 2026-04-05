@@ -51,6 +51,7 @@ venv/
 env/
 visionvault-backend/venv/
 visionvault-py311/
+visionvault-backend/venv312/
 # =========================
 # Model Weights
 # =========================

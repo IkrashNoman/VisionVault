@@ -3,15 +3,18 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework import status
 from django.core.files.base import ContentFile
+from django.core.files import File
 from .serializers import ImageStoreSerializer, ImageListSerializer, ImageDetailSerializer
 from .models import ImageStore, Tag, ImageTag, Caption
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from .tag_generation import generator
 from .caption_generation import captioner
 from .search_functionality import searcher
+from .image_generation import image_gen
 import logging
 import uuid
-import requests    
+import requests 
+import os   
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +84,10 @@ class ImageUploadView(APIView):
 
 class ImageSearchView(APIView):
     def get(self, request):
-        query = request.query_params.get('q', '')
+        query = request.query_params.get('q', '').strip()
+        # If frontend sends "undefined" string, treat as empty
+        if query.lower() == 'undefined':
+            query = ''
         page = int(request.query_params.get('page', 1))
         mode = request.query_params.get('mode', 'search')
 
@@ -96,6 +102,9 @@ class ImageSearchView(APIView):
                 vector = searcher.get_text_embedding(query)
                 db_matches = searcher.search_database(vector)
                 for img, score in db_matches:
+                    # Skip records without an actual image file
+                    if not img.image_file or not img.image_file.name:
+                        continue
                     results.append({
                         "id": str(img.public_id),
                         "src": img.image_file.url,
@@ -105,8 +114,11 @@ class ImageSearchView(APIView):
                     })
             else:
                 # Load standard gallery if no query exists
-                images = ImageStore.objects.all().order_by('-created_at')[:20]
+                images = ImageStore.objects.filter(image_file__isnull=False).order_by('-created_at')[:20]
                 for img in images:
+                    # Additional safety check
+                    if not img.image_file or not img.image_file.name:
+                        continue
                     results.append({
                         "id": str(img.public_id),
                         "src": img.image_file.url,
@@ -116,12 +128,10 @@ class ImageSearchView(APIView):
                     })
 
         # 2. WEB RESULTS: Always fetch from Pexels for every page to enable infinite scroll
-        # Fallback to 'photography' if no query is provided
         web_query = query if query else "photography"
         web_data = searcher.search_web(web_query, page=page, limit=20)
         
         for photo in web_data:
-            # Prefix 'web_' ensures ID uniqueness against local UUIDs
             results.append({
                 "id": f"web_{photo['id']}", 
                 "src": photo['src']['large2x'],
@@ -130,8 +140,8 @@ class ImageSearchView(APIView):
                 "captions": [{"text": photo.get('alt', 'Web Result')}]
             })
         
-        return Response(results)  
-      
+        return Response(results)
+          
 class ImageDetailView(RetrieveAPIView):
     queryset = ImageStore.objects.all()
     serializer_class = ImageDetailSerializer
@@ -270,3 +280,65 @@ class SilentUploadView(APIView):
                 {"error": "Internal server error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )    
+    
+class GenerateAIView(APIView):
+    def post(self, request):
+        prompt = request.data.get('prompt')
+        if not prompt:
+            return Response({"error": "Prompt is required"}, status=400)
+
+        try:
+            # 1. Generate via LCM (Fast)
+            file_paths = image_gen.generate(prompt, num_images=2)
+            results = []
+
+            for path in file_paths:
+                # 2. Save to DB
+                with open(path, 'rb') as f:
+                    instance = ImageStore.objects.create(
+                        source='AI',
+                        generation_prompt=prompt
+                    )
+                    instance.image_file.save(os.path.basename(path), File(f), save=True)
+
+                # 3. AI Pipeline: Tagging + Captioning
+                image_path = instance.image_file.path
+
+                # ---- Tagging ----
+                predicted_tags = generator.get_image_tags(image_path)
+                yolo_list, clip_list = [], []
+                for tag_name, score in predicted_tags.items():
+                    tag_obj, _ = Tag.objects.get_or_create(name=tag_name)
+                    ImageTag.objects.create(image=instance, tag=tag_obj, confidence_score=score)
+                    if score > 0.8:
+                        yolo_list.append(tag_name)
+                    else:
+                        clip_list.append(tag_name)
+
+                # ---- Captioning (with ensemble ranking) ----
+                all_captions = captioner.generate_all_captions(image_path, yolo_list, clip_list)
+                # all_captions is a list of strings – we need to rank them
+                if generator.clip_pipeline is not None and all_captions:
+                    rankings = generator.clip_pipeline.predict(image_path, all_captions, top_k=len(all_captions))
+                else:
+                    rankings = [(text, 0.5) for text in all_captions]
+
+                for i, (text, score) in enumerate(rankings[:5]):
+                    Caption.objects.create(
+                        image=instance,
+                        text=text,
+                        confidence_score=score,
+                        is_primary=(i == 0)
+                    )
+
+                results.append({
+                    "id": str(instance.public_id),
+                    "src": instance.image_file.url,
+                    "source": "AI",
+                    "tags": [t.name for t in instance.tags.all()]
+                })
+
+            return Response(results, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            logger.exception("Generation Cycle Failed")
+            return Response({"error": str(e)}, status=500)
