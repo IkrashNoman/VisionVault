@@ -2,7 +2,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Gallery from "./components/Gallery";
 import NavBar from "./components/Navbar";
-
 export default function Home() {
   const [images, setImages] = useState<any[]>([]);
   const [page, setPage] = useState(1);
@@ -19,7 +18,7 @@ export default function Home() {
       const rawSrc = img.src || img.image_file;
       if (!rawSrc) return null;
       return {
-        id: img.id,
+        id: img.id || img.public_id,
         src: rawSrc.startsWith('http') ? rawSrc : `${BACKEND_URL}${rawSrc}`,
         tags: img.tags || [],
         captions: img.captions || [],
@@ -28,35 +27,43 @@ export default function Home() {
     }).filter(Boolean);
   };
 
-  const loadImages = useCallback(async (isNewSearch = false) => {
-    if (loading || (!hasMore && !isNewSearch)) return;
-    setLoading(true);
-    const targetPage = isNewSearch ? 1 : page;
-    try {
-      const response = await fetch(`${API_BASE}/search/?q=${query}&page=${targetPage}`);
-      const data = await response.json();
-      
-      // ✅ Handle new response format: { results, has_more }
-      const results = data.results || [];
-      const more = data.has_more ?? true;
+// Inside Home component in page.tsx
+const loadImages = useCallback(async (isNewSearch = false) => {
+  // Prevent overlapping calls and dead-end requests
+  if (loading || (!hasMore && !isNewSearch)) return;
 
-      if (results.length === 0 || !more) {
-        setHasMore(false);
-      } else {
-        const formatted = formatImages(results);
-        setImages(prev => {
-          if (isNewSearch) return formatted;
-          const existingIds = new Set(prev.map(i => i.id));
-          return [...prev, ...formatted.filter(i => !existingIds.has(i.id))];
-        });
-        setHasMore(more);
-      }
-    } catch (e) {
-      console.error("Fetch error", e);
-    } finally {
-      setLoading(false);
+  setLoading(true);
+  const controller = new AbortController();
+  // If your hardware is this slow, the browser will timeout. Give it 10 mins.
+  const timeoutId = setTimeout(() => controller.abort(), 600000); 
+
+  try {
+    const url = `${API_BASE}/search/?q=${encodeURIComponent(query)}&page=${isNewSearch ? 1 : page}`;
+    const response = await fetch(url, { signal: controller.signal });
+    
+    if (!response.ok) {
+        setHasMore(false); // STOP requesting if the server is struggling
+        throw new Error(`Server returned ${response.status}`);
     }
-  }, [page, query, loading, hasMore, API_BASE]);
+
+    const data = await response.json();
+    const results = Array.isArray(data) ? data : (data.results || []);
+    
+    if (results.length === 0) {
+      setHasMore(false);
+    } else {
+      const formatted = formatImages(results);
+      setImages(prev => isNewSearch ? formatted : [...prev, ...formatted]);
+      setHasMore(data.has_more ?? (results.length > 0));
+    }
+  } catch (e: any) {
+    console.error("Critical Fetch Error:", e);
+    setHasMore(false); // This is the ONLY way to stop the unlimited requests
+  } finally {
+    clearTimeout(timeoutId);
+    setLoading(false);
+  }
+}, [page, query, loading, hasMore, API_BASE]);
 
   useEffect(() => { loadImages(true); }, [query]);
   useEffect(() => { if (page > 1) loadImages(false); }, [page]);
@@ -75,7 +82,7 @@ export default function Home() {
     <div className="min-h-screen bg-gray-50">
       <NavBar onSearchResults={(response, q) => {
         setQuery(q || '');
-        const results = response.results || response;
+        const results = Array.isArray(response) ? response : (response.results || []);
         setImages(formatImages(results));
         setPage(1);
         setHasMore(true);

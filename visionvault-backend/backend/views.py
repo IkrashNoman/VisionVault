@@ -15,6 +15,10 @@ import logging
 import uuid
 import requests 
 import os   
+from django.db import transaction
+from rest_framework import status
+import gc
+import torch
 
 logger = logging.getLogger(__name__)
 
@@ -285,60 +289,66 @@ class GenerateAIView(APIView):
     def post(self, request):
         prompt = request.data.get('prompt')
         if not prompt:
-            return Response({"error": "Prompt is required"}, status=400)
+            return Response({"error": "Prompt is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # 1. Generate via LCM (Fast)
+            # 1. TOTAL VRAM PURGE: Move everything else to CPU immediately
+            # This is why your requests are failing; the GPU is choking the OS
+            if hasattr(generator, 'model'): 
+                generator.model.to("cpu")
+            if hasattr(captioner, 'model'): 
+                captioner.model.to("cpu")
+            
+            torch.cuda.empty_cache()
+            gc.collect()
+
+            # 2. GENERATE: (Forced FP32 VAE prevents black images)
+            # This is the 6-minute bottleneck
             file_paths = image_gen.generate(prompt, num_images=2)
+            
+            if not file_paths:
+                return Response({"error": "Model failed to produce output"}, status=500)
+
             results = []
+            # 3. SAVE & ANALYZE: Re-load models to GPU only after generation is done
+            if hasattr(generator, 'model'): generator.model.to("cuda")
+            if hasattr(captioner, 'model'): captioner.model.to("cuda")
 
-            for path in file_paths:
-                # 2. Save to DB
-                with open(path, 'rb') as f:
-                    instance = ImageStore.objects.create(
-                        source='AI',
-                        generation_prompt=prompt
-                    )
-                    instance.image_file.save(os.path.basename(path), File(f), save=True)
+            with transaction.atomic():
+                for path in file_paths:
+                    with open(path, 'rb') as f:
+                        instance = ImageStore.objects.create(
+                            source='AI',
+                            generation_prompt=prompt
+                        )
+                        instance.image_file.save(os.path.basename(path), File(f), save=True)
 
-                # 3. AI Pipeline: Tagging + Captioning
-                image_path = instance.image_file.path
+                    image_path = instance.image_file.path
+                    
+                    # Standard Tagging & Captioning
+                    predicted_tags = generator.get_image_tags(image_path)
+                    yolo_list, clip_list = [], []
+                    for tag_name, score in predicted_tags.items():
+                        tag_obj, _ = Tag.objects.get_or_create(name=tag_name)
+                        ImageTag.objects.create(image=instance, tag=tag_obj, confidence_score=score)
+                        if score > 0.8: yolo_list.append(tag_name)
+                        else: clip_list.append(tag_name)
 
-                # ---- Tagging ----
-                predicted_tags = generator.get_image_tags(image_path)
-                yolo_list, clip_list = [], []
-                for tag_name, score in predicted_tags.items():
-                    tag_obj, _ = Tag.objects.get_or_create(name=tag_name)
-                    ImageTag.objects.create(image=instance, tag=tag_obj, confidence_score=score)
-                    if score > 0.8:
-                        yolo_list.append(tag_name)
-                    else:
-                        clip_list.append(tag_name)
+                    all_captions = captioner.generate_all_captions(image_path, yolo_list, clip_list)
+                    rankings = generator.clip_pipeline.predict(image_path, all_captions, top_k=5) if generator.clip_pipeline else []
 
-                # ---- Captioning (with ensemble ranking) ----
-                all_captions = captioner.generate_all_captions(image_path, yolo_list, clip_list)
-                # all_captions is a list of strings – we need to rank them
-                if generator.clip_pipeline is not None and all_captions:
-                    rankings = generator.clip_pipeline.predict(image_path, all_captions, top_k=len(all_captions))
-                else:
-                    rankings = [(text, 0.5) for text in all_captions]
+                    for i, (text, score) in enumerate(rankings):
+                        Caption.objects.create(image=instance, text=text, confidence_score=score, is_primary=(i==0))
 
-                for i, (text, score) in enumerate(rankings[:5]):
-                    Caption.objects.create(
-                        image=instance,
-                        text=text,
-                        confidence_score=score,
-                        is_primary=(i == 0)
-                    )
-
-                results.append({
-                    "id": str(instance.public_id),
-                    "src": instance.image_file.url,
-                    "source": "AI",
-                    "tags": [t.name for t in instance.tags.all()]
-                })
+                    results.append({
+                        "id": str(instance.public_id),
+                        "src": instance.image_file.url,
+                        "source": "AI",
+                        "tags": [t.name for t in instance.tags.all()]
+                    })
 
             return Response(results, status=status.HTTP_201_CREATED)
+
         except Exception as e:
-            logger.exception("Generation Cycle Failed")
-            return Response({"error": str(e)}, status=500)
+            logger.exception("AI Generation Failed")
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
