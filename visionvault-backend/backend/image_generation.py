@@ -9,7 +9,7 @@ def _setup_hf_cache():
 _setup_hf_cache()
 
 import torch
-from diffusers import StableDiffusionXLPipeline, UNet2DConditionModel, EulerDiscreteScheduler
+from diffusers import StableDiffusionXLPipeline, UNet2DConditionModel, EulerDiscreteScheduler, AutoencoderKL
 from huggingface_hub import hf_hub_download
 from safetensors.torch import load_file
 import uuid
@@ -24,38 +24,44 @@ class ImageGenerator:
     def _load_model(self):
         print(f"🚀 Loading SDXL-Lightning on {self.device}...")
         
-        # Base SDXL model
         base = "stabilityai/stable-diffusion-xl-base-1.0"
         repo = "ByteDance/SDXL-Lightning"
-        # Use the 4-step UNet checkpoint for optimal speed/quality
         ckpt = "sdxl_lightning_4step_unet.safetensors"
         
-        # Load UNet with custom checkpoint
-        unet = UNet2DConditionModel.from_config(base, subfolder="unet").to(self.device, torch.float16)
+        # UNet in float16
+        unet = UNet2DConditionModel.from_config(base, subfolder="unet").to(self.device, dtype=torch.float16)
         unet.load_state_dict(load_file(hf_hub_download(repo, ckpt), device="cuda"))
         
-        # Load the pipeline
+        # Use fp16‑compatible VAE (no upcasting needed)
+        vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16).to(self.device)
+        
+        # Load pipeline with custom VAE
         self.pipe = StableDiffusionXLPipeline.from_pretrained(
-            base, unet=unet, torch_dtype=torch.float16, variant="fp16"
+            base, unet=unet, vae=vae, torch_dtype=torch.float16, variant="fp16"
         ).to(self.device)
         
-        # Ensure sampler uses "trailing" timesteps
+        # Disable internal upcasting (redundant but safe)
+        self.pipe.upcast_vae = False
+        
+        # Enable VAE tiling/slicing to save memory
+        self.pipe.vae.enable_tiling()
+        self.pipe.vae.enable_slicing()
+        
+        # Scheduler
         self.pipe.scheduler = EulerDiscreteScheduler.from_config(
             self.pipe.scheduler.config, timestep_spacing="trailing"
         )
         
-        # Memory optimizations for 4GB GPU
+        # Memory optimizations
         if self.device == "cuda":
             self.pipe.enable_attention_slicing()
-            self.pipe.enable_vae_slicing()
         
-        print("✅ SDXL-Lightning ready.")
+        print("✅ SDXL-Lightning ready with fp16-fix VAE.")
 
     def generate(self, prompt, num_images=2):
         if not self.pipe:
             return []
         
-        # Lightning model: 4 steps, CFG = 0
         num_inference_steps = 4
         guidance_scale = 0.0
 
@@ -68,19 +74,26 @@ class ImageGenerator:
         generated_paths = []
         for i in range(num_images):
             print(f"🖌️ Generating {i+1}/{num_images}...")
-            image = self.pipe(
-                prompt=enhanced_prompt,
-                negative_prompt=negative_prompt,
-                num_inference_steps=num_inference_steps,
-                guidance_scale=guidance_scale,
-                height=1024,
-                width=1024,
-            ).images[0]
-            fname = f"ai_{uuid.uuid4()}.jpg"
-            path = os.path.join(output_dir, fname)
-            image.save(path)
-            generated_paths.append(path)
-            print(f"✅ Saved: {path}")
+            try:
+                with torch.inference_mode():
+                    image = self.pipe(
+                        prompt=enhanced_prompt,
+                        negative_prompt=negative_prompt,
+                        num_inference_steps=num_inference_steps,
+                        guidance_scale=guidance_scale,
+                        height=1024,
+                        width=1024,
+                    ).images[0]
+                fname = f"ai_{uuid.uuid4()}.jpg"
+                path = os.path.join(output_dir, fname)
+                image.save(path)
+                generated_paths.append(path)
+                print(f"✅ Saved: {path}")
+            except Exception as e:
+                print(f"❌ Generation failed: {e}")
+                import traceback
+                traceback.print_exc()
+                continue
             gc.collect()
             if self.device == "cuda":
                 torch.cuda.empty_cache()

@@ -31,23 +31,25 @@ export default function Home() {
   const loadImages = useCallback(async (isNewSearch = false) => {
     if (loading || (!hasMore && !isNewSearch)) return;
     setLoading(true);
-    
     const targetPage = isNewSearch ? 1 : page;
-    
     try {
       const response = await fetch(`${API_BASE}/search/?q=${query}&page=${targetPage}`);
       const data = await response.json();
       
-      if (data.length === 0) {
+      // ✅ Handle new response format: { results, has_more }
+      const results = data.results || [];
+      const more = data.has_more ?? true;
+
+      if (results.length === 0 || !more) {
         setHasMore(false);
       } else {
-        const formatted = formatImages(data);
+        const formatted = formatImages(results);
         setImages(prev => {
           if (isNewSearch) return formatted;
-          // Filter out any IDs already present in the state
           const existingIds = new Set(prev.map(i => i.id));
           return [...prev, ...formatted.filter(i => !existingIds.has(i.id))];
         });
+        setHasMore(more);
       }
     } catch (e) {
       console.error("Fetch error", e);
@@ -57,7 +59,6 @@ export default function Home() {
   }, [page, query, loading, hasMore, API_BASE]);
 
   useEffect(() => { loadImages(true); }, [query]);
-
   useEffect(() => { if (page > 1) loadImages(false); }, [page]);
 
   useEffect(() => {
@@ -72,7 +73,13 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <NavBar onSearchResults={(res, q) => { setQuery(q); setImages(formatImages(res)); setPage(1); setHasMore(true); }} />
+      <NavBar onSearchResults={(response, q) => {
+        setQuery(q || '');
+        const results = response.results || response;
+        setImages(formatImages(results));
+        setPage(1);
+        setHasMore(true);
+      }} />
       <main className="px-4 md:px-8 py-6">
         <Gallery images={images} />
         <div ref={loaderRef} className="h-20 flex justify-center items-center">

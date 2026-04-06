@@ -16,7 +16,7 @@ from nltk.corpus import wordnet as wn
 from ultralytics import YOLO
 from transformers import pipeline
 import logging
-
+from transformers import GenerationConfig 
 logger = logging.getLogger(__name__)
 
 try:
@@ -100,7 +100,8 @@ class TagGenerator:
             context = ", ".join(set(detected_objects + clip_tags))
             prompt = f"The image features {context}. Generate 5 unique descriptive tags for a photo gallery:"
             try:
-                gen_out = self.text_gen(prompt, max_new_tokens=20, do_sample=True, repetition_penalty=1.2)
+                gen_config = GenerationConfig(max_new_tokens=20, do_sample=True, repetition_penalty=1.2)
+                gen_out = self.text_gen(prompt, generation_config=gen_config)
                 raw_text = gen_out[0]['generated_text'].split("tags:")[-1].strip()
                 for tag in raw_text.split(','):
                     clean_tag = tag.strip('., ').lower()

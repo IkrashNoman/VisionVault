@@ -32,17 +32,18 @@ export default function NavBar({ onSearchResults }: { onSearchResults: (results:
     return () => clearTimeout(delay);
   }, [query, API_BASE]);
 
-  const triggerSearch = async (term: string) => {
-    setQuery(term);
-    setShowDropdown(false);
-    try {
-      const res = await fetch(`${API_BASE}/search/?q=${term}`);
-      const data = await res.json();
-      onSearchResults(data);
-    } catch (e) { 
-      console.error("Search error:", e); 
-    }
-  };
+ const triggerSearch = async (term: string) => {
+  setQuery(term);
+  setShowDropdown(false);
+  try {
+    const res = await fetch(`${API_BASE}/search/?q=${term}`);
+    const data = await res.json();
+    // ✅ Pass both the response object and the search term
+    onSearchResults(data, term);
+  } catch (e) {
+    console.error("Search error:", e);
+  }
+};
 
   const handleGenerateAI = async () => {
     if (!query || isGenerating) return;
